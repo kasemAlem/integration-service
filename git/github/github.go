@@ -379,6 +379,9 @@ func (c *Client) GetExistingCheckRun(checkRuns []*ghapi.CheckRun, newCheckRun *C
 	for _, cr := range checkRuns {
 		if *cr.ExternalID == newCheckRun.ExternalID {
 			c.logger.Info("found CheckRun with a matching ExternalID", "ExternalID", newCheckRun.ExternalID)
+			//kasem
+			c.logger.Info("found CheckRun with a DetailsURL", "DetailsURL", newCheckRun.DetailsURL)
+			c.logger.Info("found CheckRun with a matching ExternalID", "ExternalID", newCheckRun)
 			return cr
 		}
 	}

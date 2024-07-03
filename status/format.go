@@ -234,15 +234,20 @@ func FormatFootnotes(taskRuns []*helpers.TaskRun) (string, error) {
 // FormatPipelineURL accepts a name of application, pipelinerun, namespace and returns a complete pipelineURL.
 func FormatPipelineURL(pipelinerun string, namespace string, logger logr.Logger) string {
 	console_url := os.Getenv("CONSOLE_URL")
+	//kasem
+	logger.Info("Retrieved CONSOLE_URL", "CONSOLE_URL", console_url)
 	if console_url == "" {
-		return "https://CONSOLE_URL_NOT_AVAILABLE"
+		return "CONSOLE_URL_NOT_AVAILABLE"
 	}
+
 	buf := bytes.Buffer{}
 	data := SummaryTemplateData{PipelineRunName: pipelinerun, Namespace: namespace}
-	t := template.Must(template.New("").Parse(console_url))
+	t := template.Must(template.New("consoleURLTemplate").Parse(console_url))
 	if err := t.Execute(&buf, data); err != nil {
 		logger.Error(err, "Error occured when executing template.")
 	}
+	//kasem
+	logger.Info("Returned buf.string: ", "buf.String", buf.String())
 	return buf.String()
 }
 
@@ -250,7 +255,7 @@ func FormatPipelineURL(pipelinerun string, namespace string, logger logr.Logger)
 func FormatTaskLogURL(taskRun *helpers.TaskRun, pipelinerun string, namespace string, logger logr.Logger) string {
 	consoleTaskLogURL := os.Getenv("CONSOLE_URL_TASKLOG")
 	if consoleTaskLogURL == "" {
-		return "https://CONSOLE_URL_TASKLOG_NOT_AVAILABLE"
+		return "CONSOLE_URL_TASKLOG_NOT_AVAILABLE"
 	}
 
 	taskName := taskRun.GetPipelineTaskName()

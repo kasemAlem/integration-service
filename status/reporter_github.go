@@ -182,6 +182,7 @@ func (cru *CheckRunStatusUpdater) createCheckRunAdapterForSnapshot(report TestRe
 	if report.TestPipelineRunName == "" {
 		cru.logger.Info("TestPipelineRunName is not set for CheckRun", "ExternalID", externalID)
 	} else {
+
 		detailsURL = FormatPipelineURL(report.TestPipelineRunName, snapshot.Namespace, *cru.logger)
 	}
 
@@ -220,6 +221,8 @@ func (cru *CheckRunStatusUpdater) UpdateStatus(ctx context.Context, report TestR
 		return err
 	}
 
+	//Kasem
+	cru.logger.Info("report : ", report)
 	checkRunAdapter, err := cru.createCheckRunAdapterForSnapshot(report)
 	if err != nil {
 		cru.logger.Error(err, "failed to create checkRunAdapter for scenario, skipping update",
@@ -231,6 +234,15 @@ func (cru *CheckRunStatusUpdater) UpdateStatus(ctx context.Context, report TestR
 
 	existingCheckrun := cru.ghClient.GetExistingCheckRun(allCheckRuns, checkRunAdapter)
 
+	//kasem
+	cru.logger.Info("existingCheckrun : ", existingCheckrun)
+
+	valueDetailURL := "HELLO_WORLD_DEBUG"
+
+	existingCheckrun.DetailsURL = &valueDetailURL
+
+	cru.logger.Info("after existingCheckrun : ", existingCheckrun)
+
 	if existingCheckrun == nil {
 		cru.logger.Info("creating checkrun for scenario test status of snapshot",
 			"snapshot.NameSpace", cru.snapshot.Namespace, "snapshot.Name", cru.snapshot.Name, "scenarioName", report.ScenarioName)
@@ -241,8 +253,6 @@ func (cru *CheckRunStatusUpdater) UpdateStatus(ctx context.Context, report TestR
 		}
 		return err
 	}
-
-	cru.logger.Info("found existing checkrun", "existingCheckRun", existingCheckrun)
 
 	// If pre-existing checkrun is already completed, then create a
 	// new checkrun with same external ID, rather than updating it
@@ -258,6 +268,11 @@ func (cru *CheckRunStatusUpdater) UpdateStatus(ctx context.Context, report TestR
 	}
 
 	err = cru.ghClient.UpdateCheckRun(ctx, *existingCheckrun.ID, checkRunAdapter)
+
+	cru.logger.Info("Retrieved exisitingCheckRun.DetailsURL", "existingCheckrun.DetailsURL", existingCheckrun.DetailsURL)
+
+	cru.logger.Info("Existing CheckRun after update: ", err)
+
 	if err != nil {
 		cru.logger.Error(err, "failed to update checkrun",
 			"checkRunAdapter", checkRunAdapter)
