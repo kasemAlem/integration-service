@@ -180,9 +180,11 @@ func (cru *CheckRunStatusUpdater) createCheckRunAdapterForSnapshot(report TestRe
 	}
 
 	if report.TestPipelineRunName == "" {
-		cru.logger.Info("TestPipelineRunName is not set for CheckRun", "ExternalID", externalID)
+		cru.logger.Info("TestPipelineRunName is not set for CheckRun", "ExternalID", externalID, "DeatilsURL", detailsURL)
 	} else {
 		detailsURL = FormatPipelineURL(report.TestPipelineRunName, snapshot.Namespace, *cru.logger)
+		cru.logger.Info("TestPipelineRunName set for CheckRun", "ExternalID", externalID, "DeatilsURL", detailsURL)
+
 	}
 
 	cra := &github.CheckRunAdapter{
@@ -206,6 +208,8 @@ func (cru *CheckRunStatusUpdater) createCheckRunAdapterForSnapshot(report TestRe
 		cra.CompletionTime = *complete
 	}
 
+	cru.logger.Info("createCheckRunAdapterForSnapshot of CheckRun", "cra.ExternalID", cra.ExternalID, "cra.DeatilsURL", cra.DetailsURL)
+
 	return cra, nil
 }
 
@@ -220,7 +224,11 @@ func (cru *CheckRunStatusUpdater) UpdateStatus(ctx context.Context, report TestR
 		return err
 	}
 
+	cru.logger.Info("Report debug ", "report", report, "report.TestPipelineRunName", report.TestPipelineRunName)
+
 	checkRunAdapter, err := cru.createCheckRunAdapterForSnapshot(report)
+	cru.logger.Info("CheckRunAdapter debug ", "checkRunAdapter", checkRunAdapter)
+	cru.logger.Info("CheckRunAdapter debug ", "checkRunAdapter.ExternalID", checkRunAdapter.ExternalID, "checkRunAdapter.DetailsURL", checkRunAdapter.DetailsURL)
 	if err != nil {
 		cru.logger.Error(err, "failed to create checkRunAdapter for scenario, skipping update",
 			"snapshot.NameSpace", cru.snapshot.Namespace, "snapshot.Name", cru.snapshot.Name,
@@ -243,12 +251,15 @@ func (cru *CheckRunStatusUpdater) UpdateStatus(ctx context.Context, report TestR
 	}
 
 	cru.logger.Info("found existing checkrun", "existingCheckRun", existingCheckrun)
+	cru.logger.Info("found existing checkrun DetailsURL", "existingCheckRun.DetailsURL", existingCheckrun.DetailsURL)
 
 	// If pre-existing checkrun is already completed, then create a
 	// new checkrun with same external ID, rather than updating it
 	if existingCheckrun.GetStatus() == "completed" {
 		cru.logger.Info("The existing checkrun is already in completed state, re-creating a new checkrun for scenario test status of snapshot",
 			"snapshot.NameSpace", cru.snapshot.Namespace, "snapshot.Name", cru.snapshot.Name, "scenarioName", report.ScenarioName)
+
+		cru.logger.Info("When CheckRun was completed and creating a new one", "checkRunAdapter.ExtrnalID", checkRunAdapter.ExternalID, "checkRunAdapter.DetailsURL", checkRunAdapter.DetailsURL)
 		_, err = cru.ghClient.CreateCheckRun(ctx, checkRunAdapter)
 		if err != nil {
 			cru.logger.Error(err, "failed to create checkrun",
@@ -257,6 +268,7 @@ func (cru *CheckRunStatusUpdater) UpdateStatus(ctx context.Context, report TestR
 		return err
 	}
 
+	cru.logger.Info("When updating CheckRun", "checkRunAdapter.ExtrnalID", checkRunAdapter.ExternalID, "checkRunAdapter.DetailsURL", checkRunAdapter.DetailsURL)
 	err = cru.ghClient.UpdateCheckRun(ctx, *existingCheckrun.ID, checkRunAdapter)
 	if err != nil {
 		cru.logger.Error(err, "failed to update checkrun",

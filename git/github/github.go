@@ -279,9 +279,18 @@ func (c *Client) CreateCheckRun(ctx context.Context, cra *CheckRunAdapter) (*int
 func (c *Client) UpdateCheckRun(ctx context.Context, checkRunID int64, cra *CheckRunAdapter) error {
 	status := cra.GetStatus()
 
+	c.logger.Info("Updated CheckRun Before",
+		"ID", cra.ExternalID,
+		"CheckName", cra.Name,
+		"Status", cra.Summary,
+		"Conclusion", cra.Conclusion,
+		"DetailsURL", cra.DetailsURL,
+	)
+
 	options := ghapi.UpdateCheckRunOptions{
-		Name:   cra.Name,
-		Status: &status,
+		Name:       cra.Name,
+		Status:     &status,
+		DetailsURL: &cra.DetailsURL,
 		Output: &ghapi.CheckRunOutput{
 			Title:   &cra.Title,
 			Summary: &cra.Summary,
@@ -303,11 +312,12 @@ func (c *Client) UpdateCheckRun(ctx context.Context, checkRunID int64, cra *Chec
 		return err
 	}
 
-	c.logger.Info("Updated CheckRun",
+	c.logger.Info("Updated CheckRun After",
 		"ID", cr.ID,
 		"CheckName", cr.Name,
 		"Status", cr.Status,
 		"Conclusion", cr.Conclusion,
+		"DetailsURL", cr.DetailsURL,
 	)
 	return nil
 
@@ -378,7 +388,10 @@ func (c *Client) GetAllCheckRunsForRef(ctx context.Context, owner string, repo s
 func (c *Client) GetExistingCheckRun(checkRuns []*ghapi.CheckRun, newCheckRun *CheckRunAdapter) *ghapi.CheckRun {
 	for _, cr := range checkRuns {
 		if *cr.ExternalID == newCheckRun.ExternalID {
-			c.logger.Info("found CheckRun with a matching ExternalID", "ExternalID", newCheckRun.ExternalID)
+			c.logger.Info("found CheckRun with a matching ExternalID Before", "ExternalID", newCheckRun.ExternalID, "DetailsURL", cr.DetailsURL)
+			detailsURL := "DETAILS_URL"
+			cr.DetailsURL = &detailsURL
+			c.logger.Info("found CheckRun with a matching ExternalID After", "ExternalID", newCheckRun.ExternalID, "DetailsURL", cr.DetailsURL)
 			return cr
 		}
 	}
