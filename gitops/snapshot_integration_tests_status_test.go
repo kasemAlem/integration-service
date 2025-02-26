@@ -130,7 +130,7 @@ var _ = Describe("Snapshot integration test statuses", func() {
 
 			It("Returns error", func() {
 				_, err := gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(snapshot)
-				Expect(err).NotTo(BeNil())
+				Expect(err).To(HaveOccurred())
 			})
 		})
 

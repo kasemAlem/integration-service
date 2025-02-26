@@ -517,7 +517,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 
 			componentSource, err := adapter.getComponentSourceFromPipelineRun(buildPipelineRunNoSource)
 			Expect(componentSource).To(BeNil())
-			Expect(err).ToNot(BeNil())
+			Expect(err).To(HaveOccurred())
 		})
 
 		It("ensure err is returned when pipelinerun doesn't have Result for customized error and build pipelineRun annotated ", func() {

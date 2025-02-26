@@ -19,8 +19,9 @@ package helpers_test
 import (
 	"bytes"
 	"fmt"
-	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"time"
+
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	"github.com/konflux-ci/integration-service/api/v1beta2"
 	. "github.com/onsi/ginkgo/v2"
@@ -707,7 +708,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		Expect(k8sClient.Status().Update(ctx, integrationPipelineRun)).Should(Succeed())
 
 		pipelineRunOutcome, err := helpers.GetIntegrationPipelineRunOutcome(ctx, k8sClient, integrationPipelineRun)
-		Expect(err).To(BeNil())
+		Expect(err).ToNot(HaveOccurred())
 		Expect(pipelineRunOutcome.HasPipelineRunPassedTesting()).To(BeTrue())
 		Expect(pipelineRunOutcome.HasPipelineRunValidTestOutputs()).To(BeTrue())
 		Expect(pipelineRunOutcome.GetValidationErrorsList()).Should(BeEmpty())
@@ -744,7 +745,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		Expect(k8sClient.Status().Update(ctx, integrationPipelineRun)).Should(Succeed())
 
 		pipelineRunOutcome, err := helpers.GetIntegrationPipelineRunOutcome(ctx, k8sClient, integrationPipelineRun)
-		Expect(err).To(BeNil())
+		Expect(err).ToNot(HaveOccurred())
 		Expect(pipelineRunOutcome.HasPipelineRunPassedTesting()).To(BeTrue())
 		Expect(pipelineRunOutcome.HasPipelineRunValidTestOutputs()).To(BeTrue())
 		Expect(pipelineRunOutcome.GetValidationErrorsList()).Should(BeEmpty())
@@ -766,7 +767,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		Expect(k8sClient.Status().Update(ctx, integrationPipelineRun)).Should(Succeed())
 
 		pipelineRunOutcome, err := helpers.GetIntegrationPipelineRunOutcome(ctx, k8sClient, integrationPipelineRun)
-		Expect(err).To(BeNil())
+		Expect(err).ToNot(HaveOccurred())
 		Expect(pipelineRunOutcome.HasPipelineRunPassedTesting()).To(BeFalse())
 		Expect(pipelineRunOutcome.HasPipelineRunValidTestOutputs()).To(BeTrue())
 		Expect(pipelineRunOutcome.GetValidationErrorsList()).Should(BeEmpty())

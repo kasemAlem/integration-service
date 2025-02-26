@@ -17,11 +17,12 @@ limitations under the License.
 package buildpipeline
 
 import (
-	"github.com/konflux-ci/integration-service/helpers"
 	"reflect"
+	"time"
+
+	"github.com/konflux-ci/integration-service/helpers"
 	"sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	crwebhook "sigs.k8s.io/controller-runtime/pkg/webhook"
-	"time"
 
 	"k8s.io/apimachinery/pkg/api/errors"
 
@@ -247,7 +248,7 @@ var _ = Describe("PipelineController", func() {
 		Eventually(func() error {
 			_, err := pipelineReconciler.Reconcile(ctx, req)
 			return err
-		}).Should(BeNil())
+		}).Should(Succeed())
 	})
 
 	It("can Reconcile function prepare the adapter and return the result of the reconcile handling operation", func() {
