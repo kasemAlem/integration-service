@@ -1558,7 +1558,7 @@ var _ = Describe("Loader", Ordered, func() {
 	It("can get all componentGroups in the namespace", func() {
 		componentGroups, err := loader.GetAllComponentGroupsInNamespace(ctx, k8sClient, "default")
 		Expect(err).NotTo(HaveOccurred())
-		Expect(componentGroups).To(HaveLen(5))
+		Expect(componentGroups).To(HaveLen(6))
 	})
 
 	It("can get componentGroups that contain another componentGroup", func() {
