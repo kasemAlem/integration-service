@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"math/big"
 	"strconv"
+	"strings"
 	"time"
 
 	"k8s.io/client-go/util/retry"
@@ -39,6 +40,7 @@ import (
 	"github.com/konflux-ci/integration-service/status"
 	"github.com/konflux-ci/integration-service/tekton"
 	tektonconsts "github.com/konflux-ci/integration-service/tekton/consts"
+	"github.com/konflux-ci/integration-service/tekton/nudging"
 	"github.com/konflux-ci/operator-toolkit/controller"
 	"github.com/konflux-ci/operator-toolkit/metadata"
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
@@ -143,6 +145,120 @@ func (a *Adapter) EnsureGlobalCandidateImageUpdated() (controller.OperationResul
 		a.logger.Error(err, "Failed to update the build pipelinerun's annotation to AddedToGlobalCandidateList")
 		return controller.RequeueWithError(err)
 	}
+
+	return controller.ContinueProcessing()
+}
+
+// EnsureNudgePipelineRunsExist creates Renovate nudge PipelineRuns for downstream
+// components defined in NudgeConfig when a push build succeeds.
+func (a *Adapter) EnsureNudgePipelineRunsExist() (controller.OperationResult, error) {
+	if !tekton.IsPLRCreatedByPACPushEvent(a.pipelineRun) {
+		return controller.ContinueProcessing()
+	}
+
+	if !h.HasPipelineRunSucceeded(a.pipelineRun) {
+		return controller.ContinueProcessing()
+	}
+
+	if metadata.HasAnnotation(a.pipelineRun, tektonconsts.NudgeProcessedAnnotation) {
+		return controller.ContinueProcessing()
+	}
+
+	nudgeConfig, err := a.loader.GetNudgeConfigForNamespace(a.context, a.client, a.pipelineRun.Namespace)
+	if err != nil {
+		if errors.IsNotFound(err) {
+			return controller.ContinueProcessing()
+		}
+		a.logger.Error(err, "Failed to get NudgeConfig")
+		return controller.RequeueWithError(err)
+	}
+
+	componentName := a.component.Name
+	var targetNames []string
+	for _, nudge := range nudgeConfig.Spec.Nudges {
+		if nudge.From == componentName && (nudge.Mode == "" || nudge.Mode == v1beta2.NudgeModeImmediate) {
+			targetNames = append(targetNames, nudge.To)
+		}
+	}
+
+	if len(targetNames) == 0 {
+		_ = tekton.AnnotateBuildPipelineRun(a.context, a.pipelineRun, tektonconsts.NudgeProcessedAnnotation, "no-matching-edges", a.client)
+		return controller.ContinueProcessing()
+	}
+
+	var targetComponents []applicationapiv1alpha1.Component
+	for _, name := range targetNames {
+		comp, err := a.loader.GetComponent(a.context, a.client, name, a.pipelineRun.Namespace)
+		if err != nil {
+			if errors.IsNotFound(err) {
+				a.logger.Info("Nudge target component not found, skipping", "component.Name", name)
+				continue
+			}
+			a.logger.Error(err, "Failed to load nudge target component", "component.Name", name)
+			return controller.RequeueWithError(err)
+		}
+		targetComponents = append(targetComponents, *comp)
+	}
+
+	if len(targetComponents) == 0 {
+		a.logger.Info("No valid nudge target components found")
+		_ = tekton.AnnotateBuildPipelineRun(a.context, a.pipelineRun, tektonconsts.NudgeProcessedAnnotation, "no-valid-targets", a.client)
+		return controller.ContinueProcessing()
+	}
+
+	buildResult, err := nudging.ExtractBuildResultForNudging(a.pipelineRun, a.component)
+	if err != nil {
+		a.logger.Error(err, "Failed to extract build result for nudging, skipping")
+		_ = tekton.AnnotateBuildPipelineRun(a.context, a.pipelineRun, tektonconsts.NudgeProcessedAnnotation, "build-result-error", a.client)
+		return controller.ContinueProcessing()
+	}
+
+	simpleBranchName := a.component.Annotations != nil && a.component.Annotations[tektonconsts.NudgeSimpleBranchAnnotation] == "true"
+
+	saName := a.pipelineRun.Spec.TaskRunTemplate.ServiceAccountName
+	if saName == "" {
+		saName = tektonconsts.DefaultPipelineServiceAccount
+	}
+	imageRepoHost, imageRepoUser, imageRepoPwd, err := nudging.GetImageRegistryCredentials(a.context, a.client, a.component, saName)
+	if err != nil {
+		a.logger.Error(err, "Failed to get image registry credentials for nudging, skipping")
+		_ = tekton.AnnotateBuildPipelineRun(a.context, a.pipelineRun, tektonconsts.NudgeProcessedAnnotation, "credentials-error", a.client)
+		return controller.ContinueProcessing()
+	}
+
+	var targets []nudging.NudgeTarget
+
+	githubTargets := nudging.GetNudgeTargetsGithubApp(a.context, a.client, targetComponents, imageRepoHost, imageRepoUser, imageRepoPwd)
+	targets = append(targets, githubTargets...)
+
+	basicAuthTargets := nudging.GetNudgeTargetsBasicAuth(a.context, a.client, targetComponents, imageRepoHost, imageRepoUser, imageRepoPwd)
+	targets = append(targets, basicAuthTargets...)
+
+	if len(targets) == 0 {
+		a.logger.Info("No nudge targets with resolved credentials found")
+		_ = tekton.AnnotateBuildPipelineRun(a.context, a.pipelineRun, tektonconsts.NudgeProcessedAnnotation, "no-credentials", a.client)
+		return controller.ContinueProcessing()
+	}
+
+	err = nudging.CreateNudgePipelineRun(a.context, a.client, a.pipelineRun, targets, buildResult, simpleBranchName)
+	if err != nil {
+		a.logger.Error(err, "Failed to create nudge PipelineRun")
+		return controller.RequeueWithError(err)
+	}
+
+	names := make([]string, len(targets))
+	for i, t := range targets {
+		names[i] = t.ComponentName
+	}
+	processedValue := strings.Join(names, ",")
+	err = tekton.AnnotateBuildPipelineRun(a.context, a.pipelineRun, tektonconsts.NudgeProcessedAnnotation, processedValue, a.client)
+	if err != nil {
+		a.logger.Error(err, "Failed to annotate build PLR as nudge-processed")
+		return controller.RequeueWithError(err)
+	}
+
+	a.logger.LogAuditEvent("Created nudge PipelineRun for downstream components", a.pipelineRun, h.LogActionAdd,
+		"targets", processedValue)
 
 	return controller.ContinueProcessing()
 }

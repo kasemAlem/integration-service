@@ -7,6 +7,7 @@ rules:
 - apiGroups:
   - ""
   resources:
+  - configmaps
   - secrets
   verbs:
   - create
@@ -82,6 +83,7 @@ rules:
   - appstudio.redhat.com
   resources:
   - environments
+  - nudgeconfigs
   - releaseplans
   verbs:
   - get

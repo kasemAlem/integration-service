@@ -3965,6 +3965,264 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		})
 	})
 
+	When("EnsureNudgePipelineRunsExist is called", func() {
+		makePushPLR := func() *tektonv1.PipelineRun {
+			plr := buildPipelineRun.DeepCopy()
+			plr.Labels["pipelinesascode.tekton.dev/event-type"] = "push"
+			delete(plr.Labels, "pipelinesascode.tekton.dev/pull-request")
+			delete(plr.Annotations, tektonconsts.NudgeProcessedAnnotation)
+			return plr
+		}
+
+		It("skips when PipelineRun is not a push event", func() {
+			adapter = NewAdapter(ctx, buildPipelineRun, hasComp, &[]v1beta2.ComponentGroup{*hasCompGroup}, logger, loader.NewMockLoader(), k8sClient)
+			result, err := adapter.EnsureNudgePipelineRunsExist()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.CancelRequest).To(BeFalse())
+			Expect(result.RequeueRequest).To(BeFalse())
+		})
+
+		It("skips when build PipelineRun has not succeeded", func() {
+			pushPLR := makePushPLR()
+			pushPLR.Status.SetCondition(&apis.Condition{
+				Type:   apis.ConditionSucceeded,
+				Status: "False",
+			})
+			adapter = NewAdapter(ctx, pushPLR, hasComp, &[]v1beta2.ComponentGroup{*hasCompGroup}, logger, loader.NewMockLoader(), k8sClient)
+			result, err := adapter.EnsureNudgePipelineRunsExist()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.CancelRequest).To(BeFalse())
+		})
+
+		It("skips when build PipelineRun is already nudge-processed", func() {
+			pushPLR := makePushPLR()
+			pushPLR.Annotations[tektonconsts.NudgeProcessedAnnotation] = "component-b"
+			adapter = NewAdapter(ctx, pushPLR, hasComp, &[]v1beta2.ComponentGroup{*hasCompGroup}, logger, loader.NewMockLoader(), k8sClient)
+			result, err := adapter.EnsureNudgePipelineRunsExist()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.CancelRequest).To(BeFalse())
+		})
+
+		It("skips when NudgeConfig is not found", func() {
+			pushPLR := makePushPLR()
+			adapter = NewAdapter(ctx, pushPLR, hasComp, &[]v1beta2.ComponentGroup{*hasCompGroup}, logger, loader.NewMockLoader(), k8sClient)
+			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: loader.NudgeConfigContextKey,
+					Err:        k8serrors.NewNotFound(v1beta2.GroupVersion.WithResource("nudgeconfigs").GroupResource(), "nudge-config"),
+				},
+			})
+			result, err := adapter.EnsureNudgePipelineRunsExist()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.CancelRequest).To(BeFalse())
+		})
+
+		It("requeues when NudgeConfig load fails with transient error", func() {
+			pushPLR := makePushPLR()
+			adapter = NewAdapter(ctx, pushPLR, hasComp, &[]v1beta2.ComponentGroup{*hasCompGroup}, logger, loader.NewMockLoader(), k8sClient)
+			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: loader.NudgeConfigContextKey,
+					Err:        fmt.Errorf("transient API error"),
+				},
+			})
+			result, err := adapter.EnsureNudgePipelineRunsExist()
+			Expect(err).To(HaveOccurred())
+			Expect(result.RequeueRequest).To(BeTrue())
+		})
+
+		It("annotates no-matching-edges when NudgeConfig has no edges for the built component", func() {
+			pushPLR := makePushPLR()
+			nudgeConfig := &v1beta2.NudgeConfig{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      v1beta2.NudgeConfigSingletonName,
+					Namespace: "default",
+				},
+				Spec: v1beta2.NudgeConfigSpec{
+					Nudges: []v1beta2.NudgeRelationship{
+						{From: "other-component", To: "another-component-sample", Mode: v1beta2.NudgeModeImmediate},
+					},
+				},
+			}
+			adapter = NewAdapter(ctx, pushPLR, hasComp, &[]v1beta2.ComponentGroup{*hasCompGroup}, logger, loader.NewMockLoader(), k8sClient)
+			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: loader.NudgeConfigContextKey,
+					Resource:   nudgeConfig,
+				},
+			})
+			result, err := adapter.EnsureNudgePipelineRunsExist()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.CancelRequest).To(BeFalse())
+
+			Eventually(func(g Gomega) {
+				updatedPLR := &tektonv1.PipelineRun{}
+				g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(buildPipelineRun), updatedPLR)).To(Succeed())
+				g.Expect(updatedPLR.Annotations[tektonconsts.NudgeProcessedAnnotation]).To(Equal("no-matching-edges"))
+			}, time.Second*5).Should(Succeed())
+		})
+
+		It("annotates no-valid-targets when all target components are not found", func() {
+			pushPLR := makePushPLR()
+			nudgeConfig := &v1beta2.NudgeConfig{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      v1beta2.NudgeConfigSingletonName,
+					Namespace: "default",
+				},
+				Spec: v1beta2.NudgeConfigSpec{
+					Nudges: []v1beta2.NudgeRelationship{
+						{From: hasComp.Name, To: "nonexistent-component", Mode: v1beta2.NudgeModeImmediate},
+					},
+				},
+			}
+			adapter = NewAdapter(ctx, pushPLR, hasComp, &[]v1beta2.ComponentGroup{*hasCompGroup}, logger, loader.NewMockLoader(), k8sClient)
+			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: loader.NudgeConfigContextKey,
+					Resource:   nudgeConfig,
+				},
+				{
+					ContextKey: loader.GetComponentContextKey,
+					Err:        k8serrors.NewNotFound(applicationapiv1alpha1.GroupVersion.WithResource("components").GroupResource(), "nonexistent-component"),
+				},
+			})
+			result, err := adapter.EnsureNudgePipelineRunsExist()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.CancelRequest).To(BeFalse())
+
+			Eventually(func(g Gomega) {
+				updatedPLR := &tektonv1.PipelineRun{}
+				g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(buildPipelineRun), updatedPLR)).To(Succeed())
+				g.Expect(updatedPLR.Annotations[tektonconsts.NudgeProcessedAnnotation]).To(Equal("no-valid-targets"))
+			}, time.Second*5).Should(Succeed())
+		})
+
+		It("requeues when target component load returns transient error", func() {
+			pushPLR := makePushPLR()
+			nudgeConfig := &v1beta2.NudgeConfig{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      v1beta2.NudgeConfigSingletonName,
+					Namespace: "default",
+				},
+				Spec: v1beta2.NudgeConfigSpec{
+					Nudges: []v1beta2.NudgeRelationship{
+						{From: hasComp.Name, To: "another-component-sample", Mode: v1beta2.NudgeModeImmediate},
+					},
+				},
+			}
+			adapter = NewAdapter(ctx, pushPLR, hasComp, &[]v1beta2.ComponentGroup{*hasCompGroup}, logger, loader.NewMockLoader(), k8sClient)
+			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: loader.NudgeConfigContextKey,
+					Resource:   nudgeConfig,
+				},
+				{
+					ContextKey: loader.GetComponentContextKey,
+					Err:        fmt.Errorf("transient API error"),
+				},
+			})
+			result, err := adapter.EnsureNudgePipelineRunsExist()
+			Expect(err).To(HaveOccurred())
+			Expect(result.RequeueRequest).To(BeTrue())
+		})
+
+		It("annotates build-result-error and stops when build result extraction fails", func() {
+			pushPLR := makePushPLR()
+			pushPLR.Status.Results = nil
+			nudgeConfig := &v1beta2.NudgeConfig{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      v1beta2.NudgeConfigSingletonName,
+					Namespace: "default",
+				},
+				Spec: v1beta2.NudgeConfigSpec{
+					Nudges: []v1beta2.NudgeRelationship{
+						{From: hasComp.Name, To: "another-component-sample", Mode: v1beta2.NudgeModeImmediate},
+					},
+				},
+			}
+			adapter = NewAdapter(ctx, pushPLR, hasComp, &[]v1beta2.ComponentGroup{*hasCompGroup}, logger, loader.NewMockLoader(), k8sClient)
+			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: loader.NudgeConfigContextKey,
+					Resource:   nudgeConfig,
+				},
+			})
+			result, err := adapter.EnsureNudgePipelineRunsExist()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.CancelRequest).To(BeFalse())
+			Expect(result.RequeueRequest).To(BeFalse())
+
+			Eventually(func(g Gomega) {
+				updatedPLR := &tektonv1.PipelineRun{}
+				g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(buildPipelineRun), updatedPLR)).To(Succeed())
+				g.Expect(updatedPLR.Annotations[tektonconsts.NudgeProcessedAnnotation]).To(Equal("build-result-error"))
+			}, time.Second*5).Should(Succeed())
+		})
+
+		It("annotates credentials-error and stops when image registry credentials cannot be resolved", func() {
+			pushPLR := makePushPLR()
+			nudgeConfig := &v1beta2.NudgeConfig{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      v1beta2.NudgeConfigSingletonName,
+					Namespace: "default",
+				},
+				Spec: v1beta2.NudgeConfigSpec{
+					Nudges: []v1beta2.NudgeRelationship{
+						{From: hasComp.Name, To: "another-component-sample", Mode: v1beta2.NudgeModeImmediate},
+					},
+				},
+			}
+			adapter = NewAdapter(ctx, pushPLR, hasComp, &[]v1beta2.ComponentGroup{*hasCompGroup}, logger, loader.NewMockLoader(), k8sClient)
+			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: loader.NudgeConfigContextKey,
+					Resource:   nudgeConfig,
+				},
+			})
+			result, err := adapter.EnsureNudgePipelineRunsExist()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.CancelRequest).To(BeFalse())
+			Expect(result.RequeueRequest).To(BeFalse())
+
+			Eventually(func(g Gomega) {
+				updatedPLR := &tektonv1.PipelineRun{}
+				g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(buildPipelineRun), updatedPLR)).To(Succeed())
+				g.Expect(updatedPLR.Annotations[tektonconsts.NudgeProcessedAnnotation]).To(Equal("credentials-error"))
+			}, time.Second*5).Should(Succeed())
+		})
+
+		It("skips validated-mode edges and only processes immediate-mode edges", func() {
+			pushPLR := makePushPLR()
+			nudgeConfig := &v1beta2.NudgeConfig{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      v1beta2.NudgeConfigSingletonName,
+					Namespace: "default",
+				},
+				Spec: v1beta2.NudgeConfigSpec{
+					Nudges: []v1beta2.NudgeRelationship{
+						{From: hasComp.Name, To: "another-component-sample", Mode: v1beta2.NudgeModeValidated},
+					},
+				},
+			}
+			adapter = NewAdapter(ctx, pushPLR, hasComp, &[]v1beta2.ComponentGroup{*hasCompGroup}, logger, loader.NewMockLoader(), k8sClient)
+			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: loader.NudgeConfigContextKey,
+					Resource:   nudgeConfig,
+				},
+			})
+			result, err := adapter.EnsureNudgePipelineRunsExist()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.CancelRequest).To(BeFalse())
+
+			Eventually(func(g Gomega) {
+				updatedPLR := &tektonv1.PipelineRun{}
+				g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(buildPipelineRun), updatedPLR)).To(Succeed())
+				g.Expect(updatedPLR.Annotations[tektonconsts.NudgeProcessedAnnotation]).To(Equal("no-matching-edges"))
+			}, time.Second*5).Should(Succeed())
+		})
+	})
+
 	createAdapter = func() *Adapter {
 		adapter = NewAdapter(ctx, buildPipelineRun, hasComp, &[]v1beta2.ComponentGroup{*hasCompGroup}, logger, loader.NewMockLoader(), k8sClient)
 		return adapter
