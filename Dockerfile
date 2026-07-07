@@ -26,7 +26,8 @@ RUN if [ "$ENABLE_COVERAGE" = "true" ]; then \
         echo "Building production binary..."; \
         CGO_ENABLED=0 go build -a -o manager ./cmd; \
     fi \
- && CGO_ENABLED=0 go build -a -o snapshotgc cmd/snapshotgc/snapshotgc.go
+ && CGO_ENABLED=0 go build -a -o snapshotgc cmd/snapshotgc/snapshotgc.go \
+ && CGO_ENABLED=0 go build -a -o nudge-migrate cmd/nudge-migrate/nudge_migrate.go
 
 ARG ENABLE_WEBHOOKS=true
 ENV ENABLE_WEBHOOKS=${ENABLE_WEBHOOKS}
@@ -35,6 +36,7 @@ ENV ENABLE_WEBHOOKS=${ENABLE_WEBHOOKS}
 FROM registry.access.redhat.com/ubi9/ubi-minimal:9.8-1782797275
 COPY --from=builder /opt/app-root/src/manager /
 COPY --from=builder /opt/app-root/src/snapshotgc /
+COPY --from=builder /opt/app-root/src/nudge-migrate /
 
 # It is mandatory to set these labels
 LABEL name="integration-service"
