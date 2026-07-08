@@ -55,9 +55,9 @@ func NewScenarioReconciler(client client.Client, logger *logr.Logger, scheme *ru
 //+kubebuilder:rbac:groups=appstudio.redhat.com,resources=applications/status,verbs=get
 //+kubebuilder:rbac:groups=appstudio.redhat.com,resources=componentgroups,verbs=get;list;watch
 //+kubebuilder:rbac:groups=appstudio.redhat.com,resources=componentgroups/status,verbs=get
-//+kubebuilder:rbac:groups="",resources=serviceaccounts,verbs=get;create;update
+//+kubebuilder:rbac:groups="",resources=serviceaccounts,verbs=get;list;watch;create;update
 //+kubebuilder:rbac:groups="",resources=secrets,verbs=get;create
-//+kubebuilder:rbac:groups=rbac.authorization.k8s.io,resources=rolebindings,verbs=get;create
+//+kubebuilder:rbac:groups=rbac.authorization.k8s.io,resources=rolebindings,verbs=get;list;watch;create
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.

@@ -20,7 +20,9 @@ rules:
   verbs:
   - create
   - get
+  - list
   - update
+  - watch
 - apiGroups:
   - appstudio.redhat.com
   resources:
@@ -100,6 +102,8 @@ rules:
   verbs:
   - create
   - get
+  - list
+  - watch
 - apiGroups:
   - resolution.tekton.dev
   resources:
