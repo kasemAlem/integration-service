@@ -93,7 +93,8 @@ type NudgeConfigStatus struct {
 
 // NudgeConfig is a namespace-scoped singleton CRD that stores component nudging relationships.
 // Exactly one NudgeConfig named "nudge-config" may exist per namespace.
-// Validation rules are enforced stateless by the API server via CEL expressions with no webhook overhead.
+// Structural and singleton rules are enforced by the API server via CEL expressions;
+// graph-cycle and cross-resource Component-existence checks are enforced by a validating webhook.
 type NudgeConfig struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
