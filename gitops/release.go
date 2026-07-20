@@ -123,29 +123,23 @@ func (sf snapshotCELFunctions) shouldReleaseFn(args ...ref.Val) ref.Val {
 }
 
 func (sf snapshotCELFunctions) updatedComponentIs(arg ref.Val) ref.Val {
-	name, ok := arg.Value().(string)
+	// Note: does not work for group snapshots, they are always PR snapshots so auto-release does not apply.
+	name := arg.Value().(string)
+
+	// Check the snapshot.metadata.labels for updated component
+	meta, ok := sf.snapshot["metadata"].(map[string]any)
 	if !ok {
 		return types.Bool(false)
 	}
-	// Navigate snapshot.spec.components[].name
-	spec, ok := sf.snapshot["spec"].(map[string]any)
+	labels, ok := meta["labels"].(map[string]any)
 	if !ok {
 		return types.Bool(false)
 	}
-	components, ok := spec["components"].([]any)
+	compName, ok := labels[SnapshotComponentLabel].(string)
 	if !ok {
 		return types.Bool(false)
 	}
-	for _, c := range components {
-		cm, ok := c.(map[string]any)
-		if !ok {
-			continue
-		}
-		if compName, ok := cm["name"].(string); ok && compName == name {
-			return types.Bool(true)
-		}
-	}
-	return types.Bool(false)
+	return types.Bool(compName == name)
 }
 
 // convertToCELObjectMap marshals the typed object to JSON and back to a

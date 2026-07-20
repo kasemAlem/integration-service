@@ -105,10 +105,57 @@ var _ = Describe("Auto-release annotation evaluation", Ordered, func() {
 
 	It("returns true when the updated component is 'component-sample'", func() {
 		snapshotCopy := hasSnapshot.DeepCopy()
+		if snapshotCopy.Labels == nil {
+			snapshotCopy.Labels = make(map[string]string)
+		}
+		snapshotCopy.Labels["appstudio.openshift.io/component"] = "component-sample" //updating label to trigger the CEL expression
 		autoReleaseAnnotation := "updatedComponentIs('component-sample')"
 		allowed, err := gitops.EvaluateSnapshotAutoReleaseAnnotation(autoReleaseAnnotation, snapshotCopy, true)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(allowed).To(BeTrue())
+	})
+
+	// Verifies that updatedComponentIs() uses the appstudio.openshift.io/component label
+	// to identify the triggering component, not spec.components which contains all components.
+	Context("updatedComponentIs() with multi-component snapshots", func() {
+
+		It("returns true when the label matches the requested component in the snapshot", func() {
+			snapshotCopy := hasSnapshot.DeepCopy()
+			snapshotCopy.Spec.Components = append(snapshotCopy.Spec.Components, applicationapiv1alpha1.SnapshotComponent{
+				Name:           "backend",
+				ContainerImage: "quay.io/redhat-appstudio/backend-image:latest",
+			})
+			if snapshotCopy.Labels == nil {
+				snapshotCopy.Labels = make(map[string]string)
+			}
+			snapshotCopy.Labels["appstudio.openshift.io/component"] = "frontend"
+			allowed, err := gitops.EvaluateSnapshotAutoReleaseAnnotation("updatedComponentIs('frontend')", snapshotCopy, true)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(allowed).To(BeTrue())
+		})
+
+		It("returns false when the label points to a different component", func() {
+			snapshotCopy := hasSnapshot.DeepCopy()
+			snapshotCopy.Spec.Components = append(snapshotCopy.Spec.Components, applicationapiv1alpha1.SnapshotComponent{
+				Name:           "backend",
+				ContainerImage: "quay.io/redhat-appstudio/backend-image:latest",
+			})
+			if snapshotCopy.Labels == nil {
+				snapshotCopy.Labels = make(map[string]string)
+			}
+			snapshotCopy.Labels["appstudio.openshift.io/component"] = "frontend"
+			allowed, err := gitops.EvaluateSnapshotAutoReleaseAnnotation("updatedComponentIs('backend')", snapshotCopy, true)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(allowed).To(BeFalse())
+		})
+
+		It("returns false when no component label is set", func() {
+			snapshotCopy := hasSnapshot.DeepCopy()
+			delete(snapshotCopy.Labels, "appstudio.openshift.io/component")
+			allowed, err := gitops.EvaluateSnapshotAutoReleaseAnnotation("updatedComponentIs('frontend')", snapshotCopy, true)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(allowed).To(BeFalse())
+		})
 	})
 
 	It("returns error and false when the auto-release annotation is an invalid CEL expression", func() {
@@ -147,6 +194,10 @@ var _ = Describe("Auto-release annotation evaluation", Ordered, func() {
 
 		It("composes with updatedComponentIs", func() {
 			snapshotCopy := hasSnapshot.DeepCopy()
+			if snapshotCopy.Labels == nil {
+				snapshotCopy.Labels = make(map[string]string)
+			}
+			snapshotCopy.Labels["appstudio.openshift.io/component"] = "component-sample"
 			expr := "shouldRelease() && updatedComponentIs('component-sample')"
 			allowed, err := gitops.EvaluateSnapshotAutoReleaseAnnotation(expr, snapshotCopy, true)
 			Expect(err).NotTo(HaveOccurred())
