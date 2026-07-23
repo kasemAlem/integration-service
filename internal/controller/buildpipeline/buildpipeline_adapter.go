@@ -22,6 +22,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/big"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -240,7 +241,14 @@ func (a *Adapter) EnsureNudgePipelineRunsExist() (controller.OperationResult, er
 		return controller.ContinueProcessing()
 	}
 
-	err = nudging.CreateNudgePipelineRun(a.context, a.client, a.pipelineRun, targets, buildResult, simpleBranchName)
+	nsBytes, err := os.ReadFile("/var/run/secrets/kubernetes.io/serviceaccount/namespace")
+	if err != nil {
+		a.logger.Error(err, "Failed to read operator namespace")
+		return controller.RequeueWithError(fmt.Errorf("reading operator namespace: %w", err))
+	}
+	operatorNamespace := strings.TrimSpace(string(nsBytes))
+
+	err = nudging.CreateNudgePipelineRun(a.context, a.client, a.pipelineRun, targets, buildResult, simpleBranchName, operatorNamespace)
 	if err != nil {
 		a.logger.Error(err, "Failed to create nudge PipelineRun")
 		return controller.RequeueWithError(err)

@@ -399,12 +399,12 @@ var _ = Describe("Nudge Pipeline", func() {
 		})
 
 		It("returns nil when targets is empty", func() {
-			err := nudging.CreateNudgePipelineRun(testCtx, fakeClient, nudgingPLR, nil, buildResult, false)
+			err := nudging.CreateNudgePipelineRun(testCtx, fakeClient, nudgingPLR, nil, buildResult, false, "integration-service")
 			Expect(err).NotTo(HaveOccurred())
 		})
 
 		It("creates a PipelineRun, Secret, and ConfigMap", func() {
-			err := nudging.CreateNudgePipelineRun(testCtx, fakeClient, nudgingPLR, targets, buildResult, false)
+			err := nudging.CreateNudgePipelineRun(testCtx, fakeClient, nudgingPLR, targets, buildResult, false, "integration-service")
 			Expect(err).NotTo(HaveOccurred())
 
 			// List PipelineRuns to find the created one
@@ -453,7 +453,7 @@ var _ = Describe("Nudge Pipeline", func() {
 			}
 			Expect(fakeClient.Create(testCtx, customSA)).To(Succeed())
 
-			err := nudging.CreateNudgePipelineRun(testCtx, fakeClient, nudgingPLR, targets, buildResult, false)
+			err := nudging.CreateNudgePipelineRun(testCtx, fakeClient, nudgingPLR, targets, buildResult, false, "integration-service")
 			Expect(err).NotTo(HaveOccurred())
 
 			plrList := &tektonv1.PipelineRunList{}
@@ -465,7 +465,7 @@ var _ = Describe("Nudge Pipeline", func() {
 		It("returns an error when the service account does not exist", func() {
 			nudgingPLR.Spec.TaskRunTemplate.ServiceAccountName = "nonexistent-sa"
 
-			err := nudging.CreateNudgePipelineRun(testCtx, fakeClient, nudgingPLR, targets, buildResult, false)
+			err := nudging.CreateNudgePipelineRun(testCtx, fakeClient, nudgingPLR, targets, buildResult, false, "integration-service")
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("service account nonexistent-sa not found"))
 		})
@@ -484,7 +484,7 @@ var _ = Describe("Nudge Pipeline", func() {
 				ImageRepositoryPassword: "secret2",
 			})
 
-			err := nudging.CreateNudgePipelineRun(testCtx, fakeClient, nudgingPLR, targets, buildResult, false)
+			err := nudging.CreateNudgePipelineRun(testCtx, fakeClient, nudgingPLR, targets, buildResult, false, "integration-service")
 			Expect(err).NotTo(HaveOccurred())
 
 			plrList := &tektonv1.PipelineRunList{}
@@ -503,7 +503,7 @@ var _ = Describe("Nudge Pipeline", func() {
 		})
 
 		It("extracts the commit hash from GitRepoAtShaLink into annotation", func() {
-			err := nudging.CreateNudgePipelineRun(testCtx, fakeClient, nudgingPLR, targets, buildResult, false)
+			err := nudging.CreateNudgePipelineRun(testCtx, fakeClient, nudgingPLR, targets, buildResult, false, "integration-service")
 			Expect(err).NotTo(HaveOccurred())
 
 			plrList := &tektonv1.PipelineRunList{}
@@ -513,7 +513,7 @@ var _ = Describe("Nudge Pipeline", func() {
 
 		Context("volume and envFrom setup", func() {
 			It("mounts the config ConfigMap as a volume and the secret as envFrom", func() {
-				err := nudging.CreateNudgePipelineRun(testCtx, fakeClient, nudgingPLR, targets, buildResult, false)
+				err := nudging.CreateNudgePipelineRun(testCtx, fakeClient, nudgingPLR, targets, buildResult, false, "integration-service")
 				Expect(err).NotTo(HaveOccurred())
 
 				plrList := &tektonv1.PipelineRunList{}
@@ -554,7 +554,7 @@ var _ = Describe("Nudge Pipeline", func() {
 
 		Context("naming consistency", func() {
 			It("creates Secret and ConfigMap with the same name as the PipelineRun", func() {
-				err := nudging.CreateNudgePipelineRun(testCtx, fakeClient, nudgingPLR, targets, buildResult, false)
+				err := nudging.CreateNudgePipelineRun(testCtx, fakeClient, nudgingPLR, targets, buildResult, false, "integration-service")
 				Expect(err).NotTo(HaveOccurred())
 
 				plrList := &tektonv1.PipelineRunList{}
@@ -573,7 +573,7 @@ var _ = Describe("Nudge Pipeline", func() {
 
 		Context("ConfigMap data shape", func() {
 			It("contains valid JSON config entries keyed by component name", func() {
-				err := nudging.CreateNudgePipelineRun(testCtx, fakeClient, nudgingPLR, targets, buildResult, false)
+				err := nudging.CreateNudgePipelineRun(testCtx, fakeClient, nudgingPLR, targets, buildResult, false, "integration-service")
 				Expect(err).NotTo(HaveOccurred())
 
 				cmList := &corev1.ConfigMapList{}
@@ -597,7 +597,7 @@ var _ = Describe("Nudge Pipeline", func() {
 
 		Context("Secret data shape", func() {
 			It("contains token entries for each target", func() {
-				err := nudging.CreateNudgePipelineRun(testCtx, fakeClient, nudgingPLR, targets, buildResult, false)
+				err := nudging.CreateNudgePipelineRun(testCtx, fakeClient, nudgingPLR, targets, buildResult, false, "integration-service")
 				Expect(err).NotTo(HaveOccurred())
 
 				secretList := &corev1.SecretList{}
@@ -628,7 +628,7 @@ var _ = Describe("Nudge Pipeline", func() {
 			It("uses default renovate image when env var is not set", func() {
 				GinkgoT().Setenv(tektonconsts.RenovateImageEnvName, "")
 
-				err := nudging.CreateNudgePipelineRun(testCtx, fakeClient, nudgingPLR, targets, buildResult, false)
+				err := nudging.CreateNudgePipelineRun(testCtx, fakeClient, nudgingPLR, targets, buildResult, false, "integration-service")
 				Expect(err).NotTo(HaveOccurred())
 
 				plrList := &tektonv1.PipelineRunList{}
@@ -641,7 +641,7 @@ var _ = Describe("Nudge Pipeline", func() {
 			It("uses custom renovate image when env var is set", func() {
 				GinkgoT().Setenv(tektonconsts.RenovateImageEnvName, "my-custom-renovate:v99")
 
-				err := nudging.CreateNudgePipelineRun(testCtx, fakeClient, nudgingPLR, targets, buildResult, false)
+				err := nudging.CreateNudgePipelineRun(testCtx, fakeClient, nudgingPLR, targets, buildResult, false, "integration-service")
 				Expect(err).NotTo(HaveOccurred())
 
 				plrList := &tektonv1.PipelineRunList{}
@@ -653,7 +653,7 @@ var _ = Describe("Nudge Pipeline", func() {
 		})
 
 		Context("with CA bundle", func() {
-			It("mounts the CA ConfigMap volume when a CA bundle exists in build-service namespace", func() {
+			It("mounts the CA ConfigMap volume when a CA bundle exists in the operator namespace", func() {
 				scheme := nudgeTestScheme()
 
 				sa := &corev1.ServiceAccount{
@@ -663,7 +663,7 @@ var _ = Describe("Nudge Pipeline", func() {
 				caCM := &corev1.ConfigMap{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "trusted-ca-bundle",
-						Namespace: tektonconsts.BuildServiceNamespaceName,
+						Namespace: "integration-service",
 						Labels:    map[string]string{tektonconsts.CaConfigMapLabel: "true"},
 					},
 					Data: map[string]string{
@@ -671,16 +671,12 @@ var _ = Describe("Nudge Pipeline", func() {
 					},
 				}
 
-				buildNS := &corev1.Namespace{
-					ObjectMeta: metav1.ObjectMeta{Name: tektonconsts.BuildServiceNamespaceName},
-				}
-
 				caFakeClient := fake.NewClientBuilder().
 					WithScheme(scheme).
-					WithObjects(sa, caCM, buildNS).
+					WithObjects(sa, caCM).
 					Build()
 
-				err := nudging.CreateNudgePipelineRun(testCtx, caFakeClient, nudgingPLR, targets, buildResult, false)
+				err := nudging.CreateNudgePipelineRun(testCtx, caFakeClient, nudgingPLR, targets, buildResult, false, "integration-service")
 				Expect(err).NotTo(HaveOccurred())
 
 				plrList := &tektonv1.PipelineRunList{}
@@ -983,7 +979,7 @@ var _ = Describe("Nudge Pipeline", func() {
 					ImageRepositoryHost: "quay.io", ImageRepositoryUsername: "r", ImageRepositoryPassword: "s"},
 			}
 
-			Expect(nudging.CreateNudgePipelineRun(testCtx, fc, plr, targets, buildResult, false)).To(Succeed())
+			Expect(nudging.CreateNudgePipelineRun(testCtx, fc, plr, targets, buildResult, false, "integration-service")).To(Succeed())
 
 			plrList := &tektonv1.PipelineRunList{}
 			Expect(fc.List(testCtx, plrList, client.InNamespace("test-ns"))).To(Succeed())
@@ -1018,7 +1014,7 @@ var _ = Describe("Nudge Pipeline", func() {
 					ImageRepositoryHost: "quay.io", ImageRepositoryUsername: "r", ImageRepositoryPassword: "s",
 				}}
 
-				Expect(nudging.CreateNudgePipelineRun(testCtx, fc, plr, targets, buildResult, false)).To(Succeed())
+				Expect(nudging.CreateNudgePipelineRun(testCtx, fc, plr, targets, buildResult, false, "integration-service")).To(Succeed())
 
 				plrList := &tektonv1.PipelineRunList{}
 				Expect(fc.List(testCtx, plrList, client.InNamespace("test-ns"))).To(Succeed())

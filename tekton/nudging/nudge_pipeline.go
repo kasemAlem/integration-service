@@ -304,7 +304,7 @@ func GenerateRenovateConfig(target NudgeTarget, buildResult *NudgeBuildResult, s
 // Secret and ConfigMap in the build PLR namespace.  The PipelineRun is created
 // first so owner references can point back to it; Secret and ConfigMap are
 // created afterward (Tekton will wait for them).
-func CreateNudgePipelineRun(ctx context.Context, c client.Client, nudgingPLR *tektonv1.PipelineRun, targets []NudgeTarget, buildResult *NudgeBuildResult, simpleBranchName bool) error {
+func CreateNudgePipelineRun(ctx context.Context, c client.Client, nudgingPLR *tektonv1.PipelineRun, targets []NudgeTarget, buildResult *NudgeBuildResult, simpleBranchName bool, operatorNamespace string) error {
 	log := logger.FromContext(ctx)
 
 	if len(targets) == 0 {
@@ -348,13 +348,12 @@ func CreateNudgePipelineRun(ctx context.Context, c client.Client, nudgingPLR *te
 		return nil
 	}
 
-	// Look for a CA bundle ConfigMap in the build-service namespace.
 	allCaConfigMaps := &corev1.ConfigMapList{}
 	if err := c.List(ctx, allCaConfigMaps,
-		client.InNamespace(tektonconsts.BuildServiceNamespaceName),
+		client.InNamespace(operatorNamespace),
 		client.MatchingLabels{tektonconsts.CaConfigMapLabel: "true"},
 	); err != nil {
-		return fmt.Errorf("listing CA config maps in %s namespace: %w", tektonconsts.BuildServiceNamespaceName, err)
+		return fmt.Errorf("listing CA config maps in %s namespace: %w", operatorNamespace, err)
 	}
 	caConfigData := ""
 	if len(allCaConfigMaps.Items) > 0 {
